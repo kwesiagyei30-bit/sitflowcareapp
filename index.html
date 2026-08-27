@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SitFlow Care</title>
+<meta name="description" content="SitFlow Care — track your cycle, fertility and pregnancy, and understand your body with an AI companion. By SitCare." />
+
+<!-- PWA-lite: installable to home screen, no separate manifest file needed -->
+<link rel="manifest" href="data:application/manifest+json,{%22name%22:%22SitFlow%20Care%22,%22short_name%22:%22SitFlow%20Care%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%23F0F1FB%22,%22theme_color%22:%22%234E5FD1%22}" />
+<meta name="theme-color" content="#4E5FD1" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="SitFlow Care" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  @keyframes flowMove { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+  @keyframes riseFade { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: translateY(0); } }
+  @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes floatSlow { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+  @keyframes slideUp { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+  @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+  .anim-rise { animation: riseFade 0.4s cubic-bezier(.22,1,.36,1) both; }
+  .anim-pop { animation: popIn 0.35s cubic-bezier(.34,1.56,.64,1) both; }
+  .anim-float { animation: floatSlow 4s ease-in-out infinite; }
+  .anim-fade { animation: fadeIn 0.3s ease both; }
+  .anim-slideup { animation: slideUp 0.35s cubic-bezier(.22,1,.36,1) both; }
+  .btn-press { transition: transform 0.15s ease; }
+  .btn-press:active { transform: scale(0.94); }
+  .ring-fill { transition: stroke-dashoffset 1s cubic-bezier(.22,1,.36,1); }
+  .bar-fill { transition: width 0.9s cubic-bezier(.22,1,.36,1); }
+  .nav-icon { transition: color 0.25s ease, transform 0.25s ease; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+/* ---------------------------------------------------------
+   DESIGN TOKENS — SitCare / SitFlow Care packaging palette
+--------------------------------------------------------- */
+const T = {
+  indigo: "#4E5FD1",
+  indigoDeep: "#2C3488",
+  navy: "#1E2255",
+  silver: "#D9DCE8",
+  mint: "#33AE7C",
+  pink: "#F2A6C6",
+  pinkDeep: "#E77AA9",
+  cream: "#FBFAFF",
+};
+const SPLASH_DURATION = 2000;
+
+/* ---------------------------------------------------------
+   HAND-DRAWN ICON SET (no external icon library — keeps this
+   a single dependency-free file)
+--------------------------------------------------------- */
+const Icon = ({ children, size = 20, color = "currentColor", strokeWidth = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    {children}
+  </svg>
+);
+const IHome = (p) => <Icon {...p}><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" /></Icon>;
+const ICalendar = (p) => <Icon {...p}><rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M8 3v4M16 3v4M3.5 10h17" /></Icon>;
+const IHeart = (p) => <Icon {...p}><path d="M12 20.5s-7.5-4.6-9.7-9.4C.7 7.6 2.6 4.5 6 4.5c2 0 3.4 1 4.5 2.5C11.6 5.5 13 4.5 15 4.5c3.4 0 5.3 3.1 3.7 6.6C19.5 15.9 12 20.5 12 20.5Z" /></Icon>;
+const IBook = (p) => <Icon {...p}><path d="M4 5.5C6 4 9 4 12 5.5c3-1.5 6-1.5 8 0v13c-2-1.5-5-1.5-8 0-3-1.5-6-1.5-8 0Z" /><path d="M12 5.5v13" /></Icon>;
+const IChat = (p) => <Icon {...p}><path d="M21 12a8 8 0 1 1-3.4-6.5L21 4l-1 4.2A8 8 0 0 1 21 12Z" /></Icon>;
+const ISparkle = (p) => <Icon {...p}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" /><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z" /></Icon>;
+const IDroplet = (p) => <Icon {...p}><path d="M12 3s6.5 7.2 6.5 11.5A6.5 6.5 0 0 1 5.5 14.5C5.5 10.2 12 3 12 3Z" /></Icon>;
+const IMoon = (p) => <Icon {...p}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" /></Icon>;
+const IArrowRight = (p) => <Icon {...p}><path d="M4 12h16M13 5l7 7-7 7" /></Icon>;
+const ISend = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L14 21l7-18Z" /><path d="M10.5 13.5 21 3" /></Icon>;
+const IBell = (p) => <Icon {...p}><path d="M6 10a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 20a2 2 0 0 0 4 0" /></Icon>;
+const ICrown = (p) => <Icon {...p}><path d="M4 8l4 3 4-6 4 6 4-3-1.5 10h-13L4 8Z" /></Icon>;
+const IBaby = (p) => <Icon {...p}><circle cx="12" cy="9" r="5.5" /><path d="M9 9.5c.3.7 1 1 1.5 1M15 9.5c-.3.7-1 1-1.5 1M9.5 12c.7.8 1.6 1.2 2.5 1.2s1.8-.4 2.5-1.2" /></Icon>;
+const IThermo = (p) => <Icon {...p}><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0Z" /></Icon>;
+const IWind = (p) => <Icon {...p}><path d="M3 8h11a3 3 0 1 0-3-3M3 16h14a3 3 0 1 1-3 3M3 12h9" /></Icon>;
+const ISun = (p) => <Icon {...p}><circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v3M12 18.5v3M4 12H1M23 12h-3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" /></Icon>;
+const IShield = (p) => <Icon {...p}><path d="M12 3 4.5 6v6.5c0 4.5 3.2 7.3 7.5 8.5 4.3-1.2 7.5-4 7.5-8.5V6L12 3Z" /><path d="m9 12 2 2 4-4" /></Icon>;
+
+/* ---------------------------------------------------------
+   SMALL PRIMITIVES
+--------------------------------------------------------- */
+const StripeBand = ({ className = "" }) => (
+  <div className={"absolute inset-0 pointer-events-none overflow-hidden " + className}
+    style={{ background: "repeating-linear-gradient(115deg, " + T.pink + "22 0px, " + T.pink + "22 10px, transparent 10px, transparent 26px)" }} />
+);
+
+const Pill = ({ children, tone = "indigo" }) => {
+  const tones = {
+    indigo: { bg: T.indigo + "1A", fg: T.indigoDeep },
+    pink: { bg: T.pink + "30", fg: T.pinkDeep },
+    mint: { bg: T.mint + "22", fg: T.mint },
+  };
+  const c = tones[tone];
+  return <span className="px-3 py-1 rounded-full text-xs font-semibold tracking-wide" style={{ background: c.bg, color: c.fg }}>{children}</span>;
+};
+
+const RingProgress = ({ pct = 50, size = 132, stroke = 10, color = T.indigo, track = "#E7E9F7", children }) => {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const [offset, setOffset] = useState(c);
+  useEffect(() => { const t = setTimeout(() => setOffset(c - (pct / 100) * c), 150); return () => clearTimeout(t); }, [pct, c]);
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} stroke={track} strokeWidth={stroke} fill="none" />
+        <circle className="ring-fill" cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} fill="none" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={offset} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+    </div>
+  );
+};
+
+const StatusBar = () => (
+  <div className="flex items-center justify-between px-6 pt-3 pb-1 text-[11px] font-semibold" style={{ color: T.navy }}>
+    <span>9:41</span>
+    <div className="flex items-center gap-1">
+      <div className="w-4 h-2.5 rounded-sm border" style={{ borderColor: T.navy }} />
+      <div className="w-3 h-2.5 rounded-sm" style={{ background: T.navy }} />
+    </div>
+  </div>
+);
+
+const TopBar = ({ title, subtitle, icon }) => (
+  <div className="px-5 pt-2 pb-4 flex items-center justify-between">
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: T.indigo }}>SitFlow Care</p>
+      <h1 className="text-xl font-extrabold" style={{ color: T.navy }}>{title}</h1>
+      {subtitle && <p className="text-xs mt-0.5" style={{ color: "#7A7FA6" }}>{subtitle}</p>}
+    </div>
+    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: T.indigo + "15" }}>{icon}</div>
+  </div>
+);
+
+/* ---------------------------------------------------------
+   SPLASH — 2s brand load
+--------------------------------------------------------- */
+const SplashScreen = ({ onDone }) => {
+  const [pct, setPct] = useState(0);
+  const startRef = useRef(null);
+  useEffect(() => {
+    let raf;
+    const tick = (t) => {
+      if (!startRef.current) startRef.current = t;
+      const elapsed = t - startRef.current;
+      const p = Math.min(100, (elapsed / SPLASH_DURATION) * 100);
+      setPct(p);
+      if (p < 100) raf = requestAnimationFrame(tick);
+      else setTimeout(onDone, 120);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [onDone]);
+
+  return (
+    <div className="relative w-full h-full flex flex-col items-center justify-between overflow-hidden"
+      style={{ background: "linear-gradient(135deg, " + T.indigo + ", " + T.indigoDeep + " 60%, " + T.navy + ")" }}>
+      <div className="absolute inset-0 opacity-40" style={{
+        backgroundImage: "linear-gradient(120deg, transparent 0%, " + T.pink + "55 25%, transparent 50%, " + T.mint + "44 75%, transparent 100%)",
+        backgroundSize: "200% 200%", animation: "flowMove 3s linear infinite",
+      }} />
+      <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full anim-float" style={{ background: T.silver + "22" }} />
+      <div className="absolute bottom-24 -left-12 w-40 h-40 rounded-full anim-float" style={{ background: T.pink + "22", animationDelay: "1.2s" }} />
+      <div />
+      <div className="relative flex flex-col items-center gap-4 anim-pop">
+        <div className="w-16 h-16 rounded-full flex items-center justify-center border-2" style={{ borderColor: T.silver }}>
+          <ICrown size={28} color={T.silver} strokeWidth={1.8} />
+        </div>
+        <p className="text-xs tracking-[0.35em] font-semibold text-white/80">SITCARE</p>
+        <h1 className="text-4xl font-extrabold text-white tracking-tight">SitFlow <span style={{ color: T.pink }}>Care</span></h1>
+        <p className="text-white/70 text-sm text-center px-10">When freshness and flow are in harmony,<br />your cycle just got effortless.</p>
+      </div>
+      <div className="relative w-full px-12 pb-12 flex flex-col items-center gap-3">
+        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.2)" }}>
+          <div className="h-full rounded-full" style={{ width: pct + "%", background: "linear-gradient(90deg, " + T.pink + ", " + T.mint + ")", transition: "width 0.08s linear" }} />
+        </div>
+        <p className="text-white/60 text-[11px] tracking-widest">LOADING — {Math.floor(pct)}%</p>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   ONBOARDING
+--------------------------------------------------------- */
+const onboardSlides = [
+  { icon: <IDroplet size={40} color="white" />, title: "Track your flow", body: "Log periods, symptoms and moods in seconds — SitFlow Care learns your rhythm over time.", bg: T.indigo },
+  { icon: <ISparkle size={40} color="white" />, title: "Know your fertile days", body: "See your fertile window and ovulation estimate at a glance, clearly marked on your calendar.", bg: T.pinkDeep },
+  { icon: <IChat size={40} color="white" />, title: "Ask anything, anytime", body: "Our AI companion explains your body in simple terms — no question is too small.", bg: T.mint },
+];
+
+const OnboardingScreen = ({ onFinish }) => {
+  const [i, setI] = useState(0);
+  const slide = onboardSlides[i];
+  return (
+    <div className="w-full h-full flex flex-col anim-fade" style={{ background: T.cream }}>
+      <div className="flex justify-end p-5">
+        <button onClick={onFinish} className="text-xs font-semibold" style={{ color: "#9498BE" }}>Skip</button>
+      </div>
+      <div key={i} className="flex-1 flex flex-col items-center justify-center px-8 text-center anim-rise">
+        <div className="w-28 h-28 rounded-3xl flex items-center justify-center mb-8 shadow-lg anim-pop" style={{ background: slide.bg }}>
+          {slide.icon}
+        </div>
+        <h2 className="text-2xl font-extrabold mb-3" style={{ color: T.navy }}>{slide.title}</h2>
+        <p className="text-sm leading-relaxed" style={{ color: "#7A7FA6" }}>{slide.body}</p>
+      </div>
+      <div className="flex items-center justify-center gap-2 mb-8">
+        {onboardSlides.map((_, idx) => (
+          <div key={idx} className="rounded-full transition-all duration-300" style={{ width: idx === i ? 22 : 8, height: 8, background: idx === i ? T.indigo : T.silver }} />
+        ))}
+      </div>
+      <div className="px-8 pb-10">
+        <button onClick={() => (i < onboardSlides.length - 1 ? setI(i + 1) : onFinish())}
+          className="btn-press w-full py-3.5 rounded-2xl text-white font-bold flex items-center justify-center gap-2 shadow-lg"
+          style={{ background: "linear-gradient(90deg, " + T.indigo + ", " + T.indigoDeep + ")" }}>
+          {i < onboardSlides.length - 1 ? "Continue" : "Get started"} <IArrowRight size={18} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   HOME
+--------------------------------------------------------- */
+const HomeScreen = ({ pregnancyMode, setScreen }) => {
+  const days = ["M", "T", "W", "T", "F", "S", "S"];
+  const today = 3;
+  return (
+    <div className="w-full h-full overflow-y-auto no-scrollbar anim-fade" style={{ background: T.cream }}>
+      <StatusBar />
+      <div className="relative px-5 pt-3 pb-8 overflow-hidden" style={{ background: "linear-gradient(135deg, " + T.indigo + ", " + T.indigoDeep + ")" }}>
+        <StripeBand />
+        <div className="relative flex items-center justify-between mb-6">
+          <div>
+            <p className="text-white/70 text-xs">Good morning</p>
+            <h1 className="text-white text-xl font-extrabold">Ama 👋</h1>
+          </div>
+          <button className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center"><IBell size={18} color="white" /></button>
+        </div>
+        <div className="relative flex items-center gap-5">
+          <RingProgress pct={pregnancyMode ? 30 : 50} size={110} stroke={9} color={T.pink} track="rgba(255,255,255,0.25)">
+            <div className="text-center">
+              <p className="text-white text-xl font-extrabold leading-none">{pregnancyMode ? "12" : "14"}</p>
+              <p className="text-white/70 text-[10px] mt-1">{pregnancyMode ? "WEEKS" : "CYCLE DAY"}</p>
+            </div>
+          </RingProgress>
+          <div className="flex-1">
+            {pregnancyMode ? (
+              <React.Fragment>
+                <Pill tone="pink">Baby is the size of a lime 🍋</Pill>
+                <p className="text-white/80 text-xs mt-3">Due date estimate: 14 Feb 2027</p>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <Pill tone="pink">Fertile window · peak today</Pill>
+                <p className="text-white/80 text-xs mt-3">Next period expected in 12 days</p>
+              </React.Fragment>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 -mt-5">
+        <div className="bg-white rounded-2xl shadow-md p-4 flex justify-between">
+          {days.map((d, idx) => (
+            <div key={idx} className="flex flex-col items-center gap-1.5">
+              <span className="text-[10px]" style={{ color: "#9498BE" }}>{d}</span>
+              <div className="btn-press w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: idx === today ? T.indigo : idx < today ? T.pink + "30" : "#F1F1FA", color: idx === today ? "white" : T.navy }}>
+                {12 + idx}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-5 mt-5 grid grid-cols-2 gap-3">
+        <button onClick={() => setScreen("chat")} className="btn-press text-left rounded-2xl p-4 shadow-sm" style={{ background: T.navy }}>
+          <IChat size={20} color={T.pink} />
+          <p className="text-white text-sm font-bold mt-3">Ask SitFlow AI</p>
+          <p className="text-white/60 text-[11px] mt-1">Get simple answers, instantly</p>
+        </button>
+        <button onClick={() => setScreen("learn")} className="btn-press text-left rounded-2xl p-4 shadow-sm" style={{ background: T.mint + "15" }}>
+          <IBook size={20} color={T.mint} />
+          <p className="font-bold mt-3 text-sm" style={{ color: T.navy }}>Learn</p>
+          <p className="text-[11px] mt-1" style={{ color: "#7A7FA6" }}>Understanding ovulation</p>
+        </button>
+      </div>
+
+      <div className="px-5 mt-4 mb-6">
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: "#9498BE" }}>Log today</p>
+        <div className="flex gap-2 flex-wrap">
+          {["Flow", "Cramps", "Mood", "Headache", "Energy"].map((s) => (
+            <span key={s} className="btn-press px-3.5 py-2 rounded-xl text-xs font-semibold bg-white shadow-sm" style={{ color: T.navy }}>{s}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   CALENDAR
+--------------------------------------------------------- */
+const CalendarScreen = () => {
+  const cells = Array.from({ length: 30 }, (_, i) => i + 1);
+  const period = [1, 2, 3, 4, 5];
+  const fertile = [12, 13, 14, 15, 16];
+  const ovulation = 14;
+  const [sel, setSel] = useState(14);
+  const styleFor = (d) => {
+    if (d === ovulation) return { background: T.mint, color: "white" };
+    if (period.includes(d)) return { background: T.indigo, color: "white" };
+    if (fertile.includes(d)) return { background: T.pink + "35", color: T.pinkDeep };
+    return { background: "#F4F4FB", color: T.navy };
+  };
+  return (
+    <div className="w-full h-full overflow-y-auto no-scrollbar anim-fade" style={{ background: T.cream }}>
+      <StatusBar />
+      <TopBar title="Cycle calendar" subtitle="August 2026" icon={<ICalendar size={18} color={T.indigo} />} />
+      <div className="px-5 flex gap-4 mb-4 text-[11px]" style={{ color: "#7A7FA6" }}>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: T.indigo }} /> Period</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: T.pink }} /> Fertile</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: T.mint }} /> Ovulation</span>
+      </div>
+      <div className="px-5 grid grid-cols-7 gap-2">
+        {cells.map((d) => (
+          <button key={d} onClick={() => setSel(d)} className="btn-press aspect-square rounded-xl text-xs font-bold flex items-center justify-center"
+            style={Object.assign({}, styleFor(d), { outline: sel === d ? "2px solid " + T.navy : "none", outlineOffset: 2 })}>
+            {d}
+          </button>
+        ))}
+      </div>
+      <div className="px-5 mt-6 mb-6">
+        <div key={sel} className="anim-rise rounded-2xl p-4" style={{ background: "white", boxShadow: "0 4px 16px rgba(46,52,136,0.08)" }}>
+          <p className="text-xs font-bold mb-1" style={{ color: T.indigo }}>August {sel}</p>
+          <p className="text-sm font-semibold" style={{ color: T.navy }}>
+            {ovulation === sel ? "Predicted ovulation day" : period.includes(sel) ? "Period day" : fertile.includes(sel) ? "High fertility" : "Low chance of conception"}
+          </p>
+          <p className="text-xs mt-1" style={{ color: "#7A7FA6" }}>Tap Log to add symptoms, flow or notes for this day.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   FERTILITY
+--------------------------------------------------------- */
+const FertilityScreen = () => {
+  const bbt = [36.4, 36.5, 36.4, 36.6, 36.7, 36.9, 37.0];
+  const max = Math.max.apply(null, bbt), min = Math.min.apply(null, bbt);
+  return (
+    <div className="w-full h-full overflow-y-auto no-scrollbar anim-fade" style={{ background: T.cream }}>
+      <StatusBar />
+      <TopBar title="Fertility" subtitle="Peak window · Day 14" icon={<ISparkle size={18} color={T.pinkDeep} />} />
+      <div className="px-5">
+        <div className="relative rounded-3xl p-6 overflow-hidden" style={{ background: "linear-gradient(135deg, " + T.pinkDeep + ", " + T.indigo + ")" }}>
+          <StripeBand />
+          <div className="relative flex items-center gap-5">
+            <RingProgress pct={92} size={100} stroke={9} color="white" track="rgba(255,255,255,0.3)">
+              <span className="text-white text-lg font-extrabold">92%</span>
+            </RingProgress>
+            <div>
+              <p className="text-white font-bold text-sm">High conception chance</p>
+              <p className="text-white/75 text-xs mt-1">Ovulation predicted tomorrow, Aug 15</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="px-5 mt-5">
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: "#9498BE" }}>Basal body temperature</p>
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <svg viewBox="0 0 280 80" className="w-full h-20">
+            <polyline fill="none" stroke={T.pinkDeep} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              points={bbt.map((v, i) => (i * 46 + 6) + "," + (72 - ((v - min) / (max - min || 1)) * 60)).join(" ")} />
+            {bbt.map((v, i) => <circle key={i} cx={i * 46 + 6} cy={72 - ((v - min) / (max - min || 1)) * 60} r="3.5" fill={T.indigo} />)}
+          </svg>
+          <div className="flex justify-between text-[10px] mt-1" style={{ color: "#9498BE" }}>
+            {["9","10","11","12","13","14","15"].map((d) => <span key={d}>{d}</span>)}
+          </div>
+        </div>
+      </div>
+      <div className="px-5 mt-5 grid grid-cols-2 gap-3 mb-6">
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <IThermo size={18} color={T.indigo} />
+          <p className="text-sm font-bold mt-2" style={{ color: T.navy }}>Log temperature</p>
+          <p className="text-[11px] mt-1" style={{ color: "#7A7FA6" }}>Last: 37.0°C, 7:02am</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <IWind size={18} color={T.mint} />
+          <p className="text-sm font-bold mt-2" style={{ color: T.navy }}>Cervical mucus</p>
+          <p className="text-[11px] mt-1" style={{ color: "#7A7FA6" }}>Egg-white · fertile sign</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   PREGNANCY
+--------------------------------------------------------- */
+const PregnancyScreen = () => (
+  <div className="w-full h-full overflow-y-auto no-scrollbar anim-fade" style={{ background: T.cream }}>
+    <StatusBar />
+    <TopBar title="Pregnancy" subtitle="Week 12 of 40" icon={<IBaby size={18} color={T.mint} />} />
+    <div className="px-5">
+      <div className="relative rounded-3xl p-6 text-center overflow-hidden" style={{ background: "linear-gradient(135deg, " + T.indigo + ", " + T.navy + ")" }}>
+        <StripeBand />
+        <div className="relative flex flex-col items-center">
+          <RingProgress pct={30} size={130} stroke={10} color={T.mint} track="rgba(255,255,255,0.25)">
+            <div className="text-center">
+              <p className="text-white text-2xl font-extrabold">12</p>
+              <p className="text-white/70 text-[10px]">WEEKS</p>
+            </div>
+          </RingProgress>
+          <p className="text-white font-bold mt-4">Baby is the size of a lime 🍋</p>
+          <p className="text-white/70 text-xs mt-1">Due date: 14 February 2027 · 28 weeks to go</p>
+        </div>
+      </div>
+    </div>
+    <div className="px-5 mt-5 grid grid-cols-2 gap-3">
+      <div className="bg-white rounded-2xl p-4 shadow-sm">
+        <ISparkle size={16} color={T.pinkDeep} />
+        <p className="text-[11px] mt-2 font-semibold" style={{ color: "#9498BE" }}>This week</p>
+        <p className="text-sm font-bold" style={{ color: T.navy }}>Fingerprints forming</p>
+      </div>
+      <div className="bg-white rounded-2xl p-4 shadow-sm">
+        <IShield size={16} color={T.mint} />
+        <p className="text-[11px] mt-2 font-semibold" style={{ color: "#9498BE" }}>Common symptom</p>
+        <p className="text-sm font-bold" style={{ color: T.navy }}>Mild nausea</p>
+      </div>
+    </div>
+    <div className="px-5 mt-5 mb-6">
+      <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: "#9498BE" }}>Trimester progress</p>
+      <div className="bg-white rounded-2xl p-4 shadow-sm">
+        <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ background: "#F1F1FA" }}>
+          <div className="bar-fill h-full rounded-full" style={{ width: "30%", background: "linear-gradient(90deg, " + T.mint + ", " + T.indigo + ")" }} />
+        </div>
+        <div className="flex justify-between text-[10px] mt-2" style={{ color: "#9498BE" }}>
+          <span>1st trimester</span><span>2nd</span><span>3rd</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/* ---------------------------------------------------------
+   LEARN
+--------------------------------------------------------- */
+const topics = [
+  { t: "Understanding your cycle", c: T.indigo, i: <IMoon size={22} color="white" /> },
+  { t: "What is ovulation?", c: T.pinkDeep, i: <ISparkle size={22} color="white" /> },
+  { t: "PCOS, in simple terms", c: T.mint, i: <IShield size={22} color="white" /> },
+  { t: "Nutrition on your period", c: T.navy, i: <ISun size={22} color="white" /> },
+  { t: "When to see a doctor", c: T.pinkDeep, i: <IHeart size={22} color="white" /> },
+  { t: "Pregnancy, week by week", c: T.mint, i: <IBaby size={22} color="white" /> },
+];
+
+const LearnScreen = () => {
+  const [open, setOpen] = useState(null);
+  return (
+    <div className="w-full h-full overflow-y-auto no-scrollbar relative anim-fade" style={{ background: T.cream }}>
+      <StatusBar />
+      <TopBar title="Learn" subtitle="Know your body, simply explained" icon={<IBook size={18} color={T.indigo} />} />
+      <div className="px-5 grid grid-cols-2 gap-3 pb-6">
+        {topics.map((tp, idx) => (
+          <button key={tp.t} onClick={() => setOpen(tp)} className="btn-press anim-rise text-left rounded-2xl p-4 shadow-sm"
+            style={{ background: "white", animationDelay: (idx * 60) + "ms" }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: tp.c }}>{tp.i}</div>
+            <p className="text-xs font-bold leading-snug" style={{ color: T.navy }}>{tp.t}</p>
+          </button>
+        ))}
+      </div>
+      {open && (
+        <div className="absolute inset-0 bg-black/40 flex items-end anim-fade" onClick={() => setOpen(null)}>
+          <div className="anim-slideup w-full bg-white rounded-t-3xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-1.5 rounded-full mx-auto mb-5" style={{ background: "#E3E4F0" }} />
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: open.c }}>{open.i}</div>
+            <h3 className="text-lg font-extrabold mb-2" style={{ color: T.navy }}>{open.t}</h3>
+            <p className="text-sm leading-relaxed" style={{ color: "#7A7FA6" }}>
+              A short, illustrated explainer lives here — plain-language copy paired with a custom diagram, reviewed for medical accuracy before publishing in the full app.
+            </p>
+            <button onClick={() => setOpen(null)} className="btn-press w-full mt-6 py-3 rounded-xl font-bold text-white" style={{ background: T.indigo }}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   AI CHAT
+--------------------------------------------------------- */
+const seedMessages = [
+  { from: "ai", text: "Hi Ama 👋 I'm your SitFlow AI companion. Ask me anything about your cycle, fertility or symptoms." },
+  { from: "user", text: "Why is my cycle sometimes irregular?" },
+  { from: "ai", text: "Totally normal to wonder! Cycles can shift a few days due to stress, sleep, travel or diet. If it varies by more than 7–9 days often, it's worth flagging to a doctor — I can help you track the pattern." },
+];
+const suggestions = ["Is spotting normal?", "How is ovulation calculated?", "What does PCOS mean?"];
+
+const ChatScreen = () => {
+  const [msgs, setMsgs] = useState(seedMessages);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const endRef = useRef(null);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" }); }, [msgs, typing]);
+  const send = (text) => {
+    const t = text === undefined ? input : text;
+    if (!t.trim()) return;
+    setMsgs((m) => m.concat([{ from: "user", text: t }]));
+    setInput("");
+    setTyping(true);
+    setTimeout(() => {
+      setTyping(false);
+      setMsgs((m) => m.concat([{ from: "ai", text: "Great question — here's a simple explanation, grounded in SitFlow Care's reviewed health library. (Demo response for the investor preview.)" }]));
+    }, 1200);
+  };
+  return (
+    <div className="w-full h-full flex flex-col anim-fade" style={{ background: T.cream }}>
+      <StatusBar />
+      <div className="px-5 pt-2 pb-3 flex items-center gap-3 border-b" style={{ borderColor: "#EDEDF6" }}>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, " + T.indigo + ", " + T.pinkDeep + ")" }}>
+          <ISparkle size={16} color="white" />
+        </div>
+        <div>
+          <p className="text-sm font-extrabold" style={{ color: T.navy }}>SitFlow AI</p>
+          <p className="text-[11px]" style={{ color: T.mint }}>● Online · always private</p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 space-y-3">
+        {msgs.map((m, i) => (
+          <div key={i} className={"anim-rise flex " + (m.from === "user" ? "justify-end" : "justify-start")}>
+            <div className="max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
+              style={m.from === "user" ? { background: T.indigo, color: "white", borderBottomRightRadius: 4 } : { background: "white", color: T.navy, borderBottomLeftRadius: 4, boxShadow: "0 2px 10px rgba(46,52,136,0.06)" }}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {typing && (
+          <div className="anim-fade flex justify-start">
+            <div className="bg-white px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1 shadow-sm">
+              {[0, 1, 2].map((d) => <span key={d} className="w-1.5 h-1.5 rounded-full anim-float" style={{ background: T.silver, animationDelay: (d * 0.15) + "s" }} />)}
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+      <div className="px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar">
+        {suggestions.map((s) => (
+          <button key={s} onClick={() => send(s)} className="btn-press whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold" style={{ background: T.pink + "30", color: T.pinkDeep }}>{s}</button>
+        ))}
+      </div>
+      <div className="px-4 pb-5 pt-2 flex items-center gap-2">
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Ask about your body..." className="flex-1 px-4 py-3 rounded-2xl text-sm outline-none"
+          style={{ background: "white", color: T.navy, boxShadow: "0 2px 10px rgba(46,52,136,0.06)" }} />
+        <button onClick={() => send()} className="btn-press w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: T.indigo }}>
+          <ISend size={16} color="white" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   BOTTOM NAV
+--------------------------------------------------------- */
+const BottomNav = ({ screen, setScreen, pregnancyMode }) => {
+  const items = [
+    { k: "home", I: IHome, l: "Home" },
+    { k: "calendar", I: ICalendar, l: "Cycle" },
+    { k: pregnancyMode ? "pregnancy" : "fertility", I: pregnancyMode ? IBaby : IHeart, l: pregnancyMode ? "Baby" : "Fertile" },
+    { k: "learn", I: IBook, l: "Learn" },
+    { k: "chat", I: IChat, l: "AI Chat" },
+  ];
+  return (
+    <div className="flex items-center justify-around px-2 py-3 border-t bg-white" style={{ borderColor: "#EDEDF6" }}>
+      {items.map(({ k, I, l }) => {
+        const active = screen === k;
+        return (
+          <button key={k} onClick={() => setScreen(k)} className="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-colors duration-300"
+            style={{ background: active ? T.indigo + "12" : "transparent" }}>
+            <I size={20} color={active ? T.indigo : "#B7BAD8"} strokeWidth={active ? 2.4 : 2} className="nav-icon" />
+            <span className="text-[10px] font-semibold nav-icon" style={{ color: active ? T.indigo : "#B7BAD8" }}>{l}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------
+   APP SHELL
+--------------------------------------------------------- */
+const PhoneFrame = ({ children }) => (
+  <div className="relative mx-auto" style={{ width: 375, maxWidth: "100%" }}>
+    <div className="relative rounded-[2.8rem] p-3 shadow-2xl" style={{ background: T.navy }}>
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-28 h-5 rounded-full bg-black z-20" />
+      <div className="relative rounded-[2.2rem] overflow-hidden bg-white" style={{ height: 720 }}>{children}</div>
+    </div>
+  </div>
+);
+
+const NAV_SCREENS = [
+  { k: "splash", l: "Splash" }, { k: "onboarding", l: "Onboarding" }, { k: "home", l: "Home" },
+  { k: "calendar", l: "Calendar" }, { k: "fertility", l: "Fertility" }, { k: "pregnancy", l: "Pregnancy" },
+  { k: "learn", l: "Learn" }, { k: "chat", l: "AI Chat" },
+];
+
+function App() {
+  const [screen, setScreen] = useState("splash");
+  const [pregnancyMode, setPregnancyMode] = useState(false);
+
+  const renderScreen = () => {
+    switch (screen) {
+      case "splash": return <SplashScreen onDone={() => setScreen("onboarding")} />;
+      case "onboarding": return <OnboardingScreen onFinish={() => setScreen("home")} />;
+      case "home": return <HomeScreen pregnancyMode={pregnancyMode} setScreen={setScreen} />;
+      case "calendar": return <CalendarScreen />;
+      case "fertility": return <FertilityScreen />;
+      case "pregnancy": return <PregnancyScreen />;
+      case "learn": return <LearnScreen />;
+      case "chat": return <ChatScreen />;
+      default: return null;
+    }
+  };
+  const showNav = screen !== "splash" && screen !== "onboarding";
+
+  return (
+    <div className="w-full min-h-screen" style={{ background: "linear-gradient(180deg, #F0F1FB, #E8E9F8)" }}>
+      <div className="sticky top-0 z-30 backdrop-blur bg-white/70 border-b" style={{ borderColor: "#E3E4F0" }}>
+        <div className="max-w-3xl mx-auto px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <ICrown size={16} color={T.indigo} />
+            <span className="text-xs font-extrabold tracking-wide" style={{ color: T.navy }}>SITCARE — SitFlow Care · Investor Preview</span>
+          </div>
+          <label className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: T.navy }}>
+            Pregnancy mode
+            <button onClick={() => setPregnancyMode((p) => !p)} className="w-9 h-5 rounded-full relative transition-colors duration-300" style={{ background: pregnancyMode ? T.mint : "#D9DCE8" }}>
+              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-300" style={{ left: pregnancyMode ? 18 : 2 }} />
+            </button>
+          </label>
+        </div>
+        <div className="max-w-3xl mx-auto px-5 pb-3 flex gap-2 overflow-x-auto no-scrollbar">
+          {NAV_SCREENS.map((s) => (
+            <button key={s.k} onClick={() => setScreen(s.k)} className="whitespace-nowrap px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors"
+              style={{ background: screen === s.k ? T.indigo : "white", color: screen === s.k ? "white" : T.navy, border: "1px solid " + (screen === s.k ? T.indigo : "#E3E4F0") }}>
+              {s.l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col items-center py-10 px-4">
+        <PhoneFrame>
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-hidden relative">{renderScreen()}</div>
+            {showNav && <BottomNav screen={screen} setScreen={setScreen} pregnancyMode={pregnancyMode} />}
+          </div>
+        </PhoneFrame>
+        <p className="text-xs mt-6 text-center max-w-sm" style={{ color: "#9498BE" }}>
+          Installable web app (PWA) — investors can add it to their home screen. Use the navigator above to jump between screens.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
