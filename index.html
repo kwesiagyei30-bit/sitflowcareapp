@@ -4110,25 +4110,30 @@ function App() {
     return () => document.removeEventListener("visibilitychange", check);
   }, [appMode, lmpDate, cycleLength, flowDays, pregnancyLmp, cycleGoal, notifPermission]);
 
-  // On first load: if Firebase is configured, let it tell us whether this
-  // browser already has a signed-in account (Firebase persists sessions
-  // itself) and pull the profile from Firestore. Otherwise — or if nothing
-  // is configured yet — fall back to the local-only profile, so the app
-  // always works even before a real backend is connected.
+  // On first load: check the local cache immediately so a returning user's
+  // data shows up instantly (no network wait) — then, if Firebase is
+  // configured, refresh from Firestore in the background and re-sync the
+  // cache. Previously this only checked Firebase when configured, racing
+  // a live network call against the splash timer; on a slow connection
+  // that race could lose and bounce a known user back to onboarding.
   useEffect(() => {
+    const saved = loadJSON(PROFILE_KEY, null);
+    if (saved && saved.userName) applyProfile(saved);
+
     if (fb) {
       const unsubscribe = fb.auth.onAuthStateChanged(user => {
         if (user) {
           setUid(user.uid);
           fbLoadProfile(user.uid).then(data => {
-            if (data && data.userName) applyProfile(data);
+            if (data && data.userName) {
+              applyProfile(data);
+              saveJSON(PROFILE_KEY, data);
+            }
           });
         }
       });
       return unsubscribe;
     }
-    const saved = loadJSON(PROFILE_KEY, null);
-    if (saved && saved.userName) applyProfile(saved);
   }, []);
   const toggleLog = (dateISO, tag) => {
     setLogs(prev => {
